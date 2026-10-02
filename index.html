@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reducing UPI Payment Failures: Google Pay PM Case Study</title>
+<meta name="description" content="Product management case study and PRD: a Payment Health & Recovery Engine for Google Pay UPI payments in India.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F6F8; --surface:#FFFFFF; --ink:#14181F; --muted:#5B6472; --line:#DDE1E7;
+  --accent:#1D4ED8; --accent-soft:#E6EDFD;
+  --ok:#0B7A55; --ok-soft:#E3F4EC; --warn:#8F5400; --warn-soft:#FDF1DC; --bad:#B42318; --bad-soft:#FCE9E7;
+  --sans:"Schibsted Grotesk","Helvetica Neue",Arial,sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1116; --surface:#161B22; --ink:#E8EBF0; --muted:#98A2B3; --line:#2A313B;
+    --accent:#7AA2FF; --accent-soft:#1B2745;
+    --ok:#4CC38A; --ok-soft:#10281E; --warn:#F0B24B; --warn-soft:#2D2410; --bad:#FF8A7A; --bad-soft:#321716;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1116; --surface:#161B22; --ink:#E8EBF0; --muted:#98A2B3; --line:#2A313B;
+  --accent:#7AA2FF; --accent-soft:#1B2745;
+  --ok:#4CC38A; --ok-soft:#10281E; --warn:#F0B24B; --warn-soft:#2D2410; --bad:#FF8A7A; --bad-soft:#321716;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 70px);scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:17px;line-height:1.65;-webkit-text-size-adjust:100%}
+a{color:var(--accent);text-underline-offset:3px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3,h4{font-family:var(--sans);color:var(--ink);line-height:1.2;margin:0}
+p{margin:0 0 1em}
+ul,ol{margin:0 0 1em;padding-left:1.25em}
+li{margin:0 0 .35em}
+strong{font-weight:600}
+
+/* layout */
+.shell{max-width:1120px;margin:0 auto;padding:0 20px}
+.layout{display:block}
+@media (min-width:980px){
+  .layout{display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px;align-items:start}
+}
+nav.toc{font-family:var(--sans);font-size:14px}
+nav.toc ul{list-style:none;margin:0;padding:0}
+nav.toc li{margin:0}
+nav.toc a{display:block;padding:6px 10px;color:var(--muted);text-decoration:none;border-left:2px solid var(--line)}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a[aria-current="true"]{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+@media (min-width:980px){
+  nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 24px);max-height:calc(100vh - 48px);overflow:auto;padding-top:8px}
+}
+@media (max-width:979px){
+  nav.toc{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line);margin:0 -20px;padding:0 20px}
+  nav.toc ul{display:flex;overflow-x:auto;gap:2px;-webkit-overflow-scrolling:touch}
+  nav.toc a{white-space:nowrap;border-left:0;border-bottom:2px solid transparent;padding:12px 10px}
+  nav.toc a[aria-current="true"]{border-bottom-color:var(--accent)}
+}
+main{min-width:0;max-width:720px;padding-bottom:80px}
+
+/* hero */
+.hero{padding:44px 0 8px}
+.hero h1{font-size:clamp(2rem,5.5vw,3.1rem);font-weight:700;letter-spacing:-.02em;margin-bottom:14px}
+.hero .lede{font-size:1.2rem;line-height:1.5;color:var(--muted);margin-bottom:18px;max-width:34em}
+.meta{font-family:var(--sans);font-size:14px;color:var(--muted);display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 20px;margin:0 0 28px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.meta dt{font-weight:600;color:var(--ink);margin:0 0 2px}
+.meta dd{margin:0}
+
+/* state demo: the one memorable thing */
+.demo{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;margin:0 0 12px;font-family:var(--sans)}
+.demo h2{font-size:1.05rem;margin-bottom:4px}
+.demo .hint{color:var(--muted);font-size:14px;margin:0 0 14px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.tabs button{font:inherit;font-size:14px;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:8px 12px;border-radius:999px;cursor:pointer;transition:background .15s,border-color .15s}
+.tabs button:hover{border-color:var(--accent)}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .tabs button[aria-selected="true"]{color:#0E1116}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tabs button[aria-selected="true"]{color:#0E1116}}
+.compare{display:grid;gap:14px}
+@media (min-width:640px){.compare{grid-template-columns:1fr 1.35fr}}
+.pane{border-radius:12px;padding:14px 16px;border:1px solid var(--line)}
+.pane .tag{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.pane.before{background:var(--bad-soft);border-color:transparent}
+.pane.before .msg{font-weight:700;font-size:1.05rem}
+.pane.after{border-width:1.5px;transition:background .2s,border-color .2s}
+.pane.after .msg{font-weight:700;font-size:1.05rem;margin-bottom:6px}
+.pane.after p{font-size:15px;line-height:1.5;margin:0 0 6px}
+.pane.after.ok{background:var(--ok-soft);border-color:var(--ok)}
+.pane.after.warn{background:var(--warn-soft);border-color:var(--warn)}
+.pane.after.bad{background:var(--bad-soft);border-color:var(--bad)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.fact{font-size:14px;border-top:2px solid var(--line);padding-top:8px}
+.fact b{display:block;font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:2px}
+.demo-note{font-size:13px;color:var(--muted);margin:12px 0 0}
+
+/* sections */
+section{padding-top:56px}
+section>h2{font-size:1.7rem;font-weight:700;letter-spacing:-.01em;margin-bottom:16px}
+h3{font-size:1.1rem;font-weight:600;margin:28px 0 10px}
+.callout{font-family:var(--sans);background:var(--accent-soft);border-left:4px solid var(--accent);padding:14px 18px;border-radius:0 10px 10px 0;margin:0 0 1.2em}
+.callout p{margin:0;font-size:1.05rem;line-height:1.5}
+.callout.q p{font-weight:600}
+.callout.warn{background:var(--warn-soft);border-left-color:var(--warn)}
+.callout.ok{background:var(--ok-soft);border-left-color:var(--ok)}
+.callout.bad{background:var(--bad-soft);border-left-color:var(--bad)}
+.callout .k{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.scroll{overflow-x:auto;margin:0 0 1.4em;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:14.5px;line-height:1.45;min-width:520px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font-weight:600;background:var(--bg);color:var(--ink);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:600}
+.flow{display:flex;flex-wrap:wrap;gap:6px 0;margin:0 0 1.3em;padding:0;list-style:none;font-family:var(--sans);font-size:14px;font-weight:600}
+.flow li{margin:0;display:flex;align-items:center}
+.flow li span{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+.flow li:not(:last-child)::after{content:"\2192";color:var(--accent);padding:0 8px;font-weight:700}
+.pitch{font-size:1.1rem;line-height:1.6}
+.cards{display:grid;gap:12px;margin:0 0 1.4em;font-family:var(--sans)}
+@media (min-width:600px){.cards{grid-template-columns:1fr 1fr}}
+.card{border-radius:10px;padding:12px 14px;border:1.5px solid var(--line);background:var(--surface);font-size:14.5px;line-height:1.5}
+.card b.t{display:block;margin-bottom:3px}
+.card .s{font-size:12.5px;font-weight:600;margin-bottom:4px;display:block}
+.card.ok{border-color:var(--ok);background:var(--ok-soft)} .card.ok .s{color:var(--ok)}
+.card.warn{border-color:var(--warn);background:var(--warn-soft)} .card.warn .s{color:var(--warn)}
+.card.bad{border-color:var(--bad);background:var(--bad-soft)} .card.bad .s{color:var(--bad)}
+.incident{font-family:var(--sans);background:var(--surface);border:1.5px solid var(--bad);border-radius:12px;padding:16px 18px;margin:0 0 1.2em}
+.incident h4{color:var(--bad);font-size:1rem;margin-bottom:10px}
+.incident dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 18px;margin:0;font-size:14.5px}
+.incident dt{font-size:12.5px;color:var(--muted);font-weight:600}
+.incident dd{margin:0;font-weight:600}
+.incident p{font-size:13px;color:var(--muted);margin:12px 0 0}
+ol.road{list-style:none;padding:0;margin:0 0 1.4em;font-family:var(--sans);counter-reset:r}
+ol.road li{counter-increment:r;display:grid;grid-template-columns:34px 1fr;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--line);margin:0}
+ol.road li::before{content:counter(r);grid-row:1/3;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+:root[data-theme="dark"] ol.road li::before{color:#0E1116}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) ol.road li::before{color:#0E1116}}
+ol.road b{font-size:1rem}
+ol.road i{font-style:normal;font-size:13px;color:var(--muted);margin-left:8px}
+ol.road span{font-size:15px;line-height:1.5;color:var(--ink)}
+details{border:1px solid var(--line);background:var(--surface);border-radius:10px;margin:0 0 10px}
+details summary{font-family:var(--sans);font-weight:600;cursor:pointer;padding:12px 16px;list-style:none;display:flex;justify-content:space-between;gap:12px}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";color:var(--accent);font-weight:700}
+details[open] summary::after{content:"\2212"}
+details div{padding:0 16px 14px;font-size:16px}
+details p:last-child{margin:0}
+.src a{word-break:break-all}
+footer{font-family:var(--sans);font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding:24px 0 40px;margin-top:56px}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="layout">
+
+<nav class="toc" aria-label="Case study sections">
+<ul id="toclist">
+<li><a href="#top">Overview</a></li>
+<li><a href="#brief">Interview brief</a></li>
+<li><a href="#summary">Executive summary</a></li>
+<li><a href="#problem">The problem</a></li>
+<li><a href="#causes">Root causes</a></li>
+<li><a href="#journey">Customer journey</a></li>
+<li><a href="#solutions">Solutions considered</a></li>
+<li><a href="#engine">The engine</a></li>
+<li><a href="#alerts">Alerts and dashboard</a></li>
+<li><a href="#recovery">Recovery and feedback loop</a></li>
+<li><a href="#prd">PRD and MVP</a></li>
+<li><a href="#metrics">Metrics</a></li>
+<li><a href="#experiment">Experiment</a></li>
+<li><a href="#roadmap">Roadmap</a></li>
+<li><a href="#outcome">Outcome and trade-offs</a></li>
+<li><a href="#qa">Interview Q&amp;A</a></li>
+<li><a href="#sources">Sources</a></li>
+</ul>
+</nav>
+
+<main id="top">
+<header class="hero">
+  <h1>Reducing UPI payment failures</h1>
+  <p class="lede">When a payment can't be completed, customers need to know what happened to their money and what to do next. This case study shows how Google Pay could build that.</p>
+  <dl class="meta">
+    <div><dt>Product</dt><dd>Google Pay, UPI payments</dd></div>
+    <div><dt>Role</dt><dd>Product Manager</dd></div>
+    <div><dt>Market</dt><dd>India</dd></div>
+    <div><dt>Focus</dt><dd>Reliability, trust, failure recovery</dd></div>
+  </dl>
+
+  <div class="demo" id="demo">
+    <h2>Try it: what happened to the payment?</h2>
+    <p class="hint">Pick a situation. See what customers get today next to what this case study proposes.</p>
+    <div class="tabs" role="tablist" aria-label="Payment situation" id="tabs"></div>
+    <div class="compare" role="tabpanel" id="panel" aria-live="polite">
+      <div class="pane before"><div class="tag">Today's typical experience</div><div class="msg" id="beforeMsg"></div><p style="font-size:14px;margin:6px 0 0;color:var(--muted)" id="beforeNote"></p></div>
+      <div class="pane after" id="afterPane"><div class="tag">Proposed experience</div><div class="msg" id="afterMsg"></div><p id="afterP1"></p><p id="afterP2"><strong></strong></p></div>
+    </div>
+    <div class="facts">
+      <div class="fact"><b>Payment state</b><span id="fState"></span></div>
+      <div class="fact"><b>Retry allowed?</b><span id="fRetry"></span></div>
+      <div class="fact"><b>What the system does</b><span id="fAction"></span></div>
+    </div>
+    <p class="demo-note">Illustrative messages from this case study. Today's wording is a generalisation, not a quote from any app.</p>
+  </div>
+</header>
+
+<section id="brief">
+  <h2>Interview brief</h2>
+  <h3>The 30-second pitch</h3>
+  <p class="pitch">UPI handles 24.51 billion transactions a month, so even a tiny failure rate affects millions of people. I wouldn't try to eliminate every failure, because many come from banks and networks Google Pay doesn't control. I'd build a <strong>Payment Health &amp; Recovery Engine</strong> that detects and classifies each failure, tells the customer what happened and what to do next, blocks unsafe retries, alerts internal teams to failure spikes, and feeds that data back to engineering. The goal: customers always know what's happening to their money.</p>
+  <h3>The framework</h3>
+  <ul class="flow"><li><span>Detect</span></li><li><span>Classify</span></li><li><span>Inform</span></li><li><span>Monitor</span></li><li><span>Recover</span></li><li><span>Alert</span></li><li><span>Learn</span></li></ul>
+  <h3>Key decisions and why</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Decision</th><th>Why</th></tr></thead>
+    <tbody>
+    <tr><td>Recover, don't just fix</td><td>Bank and network failures are outside Google Pay's control. We control detection, communication, retry safety and recovery.</td></tr>
+    <tr><td>Never retry an unknown payment</td><td>Retrying before confirming status risks duplicate payments. Check status first.</td></tr>
+    <tr><td>North Star: first-attempt success rate</td><td>Measures whether customers complete the payment without needing retries.</td></tr>
+    <tr><td>Guardrails: fraud, duplicates, latency</td><td>Never raise success by weakening authentication or fraud controls.</td></tr>
+    <tr><td>No invented target percentage</td><td>Set targets only after baselining failure volume, bank distribution and recovery rate.</td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="summary">
+  <h2>Executive summary</h2>
+  <p>Digital payments are an everyday necessity in India. UPI processed <strong>24.51 billion transactions in August 2026</strong>, worth about <strong>₹29.82 lakh crore</strong>, according to NPCI. At this scale, even a small percentage of failed or ambiguous transactions affects millions of payment attempts.</p>
+  <div class="callout q"><span class="k">The problem</span><p>How can Google Pay reduce the negative impact of payment failures and build greater customer confidence when a transaction cannot be completed successfully?</p></div>
+  <p>Some failures originate from banks, payment networks, connectivity or other dependencies Google Pay cannot fully control. So the approach is not to blindly eliminate every technical failure. Instead, build a <strong>Payment Failure Detection &amp; Recovery System</strong> that:</p>
+  <ul>
+    <li>Detects and classifies payment failures.</li>
+    <li>Clearly communicates the problem to the customer.</li>
+    <li>Prevents unnecessary duplicate payments.</li>
+    <li>Automatically alerts internal teams when a failure pattern emerges.</li>
+    <li>Tracks affected customers and transactions.</li>
+    <li>Helps customers safely recover their payment.</li>
+    <li>Generates data engineering teams can use to fix recurring problems.</li>
+  </ul>
+  <div class="callout"><span class="k">Core principle</span><p><strong>Don't just fix the failure. Fix the customer's experience of the failure.</strong></p></div>
+</section>
+
+<section id="problem">
+  <h2>The problem</h2>
+  <p>A payment is successful when the intended transfer of money is completed. Failures happen in several ways, and the key distinction is this: <strong>the payment may fail, but the customer's money may or may not have been debited.</strong> NPCI distinguishes business declines, technical declines and debit-reversal or pending scenarios in the UPI ecosystem.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Scenario</th><th>What happens</th><th>How the customer feels</th></tr></thead>
+    <tbody>
+    <tr><td>A. Simple failure</td><td>User pays, bank rejects, money not debited.</td><td>Frustrated, but it's straightforward.</td></tr>
+    <tr><td>B. Technical failure</td><td>User pays, bank or server doesn't respond, Google Pay can't confirm.</td><td>Uncertain: "what happened?"</td></tr>
+    <tr><td>C. Debit, no confirmation</td><td>Account debited, recipient doesn't get confirmation immediately.</td><td>Anxious about their money.</td></tr>
+    </tbody></table></div>
+
+  <h3>Why it matters</h3>
+  <p><strong>Customer impact.</strong> Payment is a high-intent action: paying a merchant, a friend, rent, a bill or a purchase. A failure interrupts the goal immediately.</p>
+  <p><strong>Customer trust.</strong> Users tolerate an occasional technical problem. What damages trust is uncertainty. They start asking:</p>
+  <ul>
+    <li>Did my payment go through?</li>
+    <li>Was my account debited?</li>
+    <li>Should I try again?</li>
+    <li>Will I get my money back?</li>
+    <li>Should I use another payment app?</li>
+  </ul>
+  <p>Payment reliability is therefore not only a technical problem. It is a trust and customer-experience problem.</p>
+  <p><strong>Business impact.</strong> Repeated failures can lead to reduced transaction frequency, higher support volume and cost, more reversals, lower confidence, users switching to other apps or methods, and merchant dissatisfaction.</p>
+</section>
+
+<section id="causes">
+  <h2>Root causes</h2>
+  <p>Payment failures fall into four categories.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Category</th><th>Examples</th><th>Product response</th></tr></thead>
+    <tbody>
+    <tr><td>Business or user-side</td><td>Incorrect UPI PIN, insufficient balance, limit exceeded, invalid beneficiary, account restrictions</td><td>Better error messages, preventive validation, user guidance, contextual instructions</td></tr>
+    <tr><td>Technical or system</td><td>Bank downtime, network failure, timeout, bank integration failure, NPCI or infrastructure issues</td><td>Detect, inform, prevent unnecessary retries, monitor, alert internal teams, investigate</td></tr>
+    <tr><td>Pending or unknown</td><td>Bank processes the request but confirmation is delayed, so status is unknown</td><td>Say "We couldn't confirm your payment yet", then check status before allowing another payment</td></tr>
+    <tr><td>Debit, no completion</td><td>Account debited but the intended payment not completed</td><td>Say clearly: debited or not, recipient received or not, reversal expected, what to do next</td></tr>
+    </tbody></table></div>
+  <div class="callout warn"><span class="k">Why the last two matter most</span><p>For unknown status, letting the user retry blindly could cause a duplicate payment. Debit without completion creates the highest customer anxiety.</p></div>
+</section>
+
+<section id="journey">
+  <h2>Customer journey</h2>
+  <p>The ideal payment journey looks like this.</p>
+  <ul class="flow"><li><span>Initiate</span></li><li><span>Authenticate</span></li><li><span>Bank processing</span></li><li><span>Network</span></li><li><span>Beneficiary bank</span></li><li><span>Success</span></li></ul>
+  <p>Failures can happen at multiple points. The product opportunity is to identify <strong>where the failure happened and what the customer should do next</strong>. A bare "Payment Failed" leaves the user to guess. The proposed message answers three things: what happened, what it means, and what to do next. Use the demo at the top of the page to compare the two.</p>
+</section>
+
+<section id="solutions">
+  <h2>Solutions considered</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Solution</th><th>How it works</th><th>Benefit</th><th>Limitation or risk</th></tr></thead>
+    <tbody>
+    <tr><td>Better error messages</td><td>Contextual text, for example "Your bank didn't respond in time. We're checking your payment status."</td><td>Less confusion, fewer retries</td><td>Communication alone doesn't fix the technical problem</td></tr>
+    <tr><td>Intelligent retry</td><td>Success: don't retry. Confirmed failure: allow retry. Unknown: check status first. Pending: keep monitoring.</td><td>Faster recovery</td><td>Wrong retry logic causes duplicate payments, so status verification is essential</td></tr>
+    <tr><td>Alternative payment route</td><td>If one linked bank is struggling, offer another linked account.</td><td>Customer completes the task without waiting</td><td>Not every user has a second linked account</td></tr>
+    <tr><td>Preventive validation</td><td>Catch input problems, communicate limits, guide authentication, flag known account restrictions before submit.</td><td>Prevents avoidable failures</td><td>Doesn't address bank-side failures</td></tr>
+    <tr><td>Real-time bank health warning</td><td>"Payments from your bank are currently experiencing delays", shown before the user tries.</td><td>Turns a surprise failure into an informed decision</td><td>Needs reliable detection</td></tr>
+    <tr><td>Payment Health &amp; Recovery Engine</td><td>Combines the above: detect, classify, inform, monitor, recover, alert, learn.</td><td>Covers the complete problem</td><td>Larger build, so phase it (see MVP)</td></tr>
+    </tbody></table></div>
+  <div class="callout ok"><span class="k">Decision</span><p>The Payment Health &amp; Recovery Engine is the solution to take forward. It unifies the other five into one foundation for the whole payment-failure experience.</p></div>
+
+  <h3>Why this one</h3>
+  <p><strong>Work smartly rather than trying to solve every problem blindly.</strong> If a significant share of failures comes from external bank or network systems, spending the whole roadmap trying to eliminate them may not give the highest short-term customer impact. Focus on what Google Pay can control:</p>
+  <ul class="flow"><li><span>Detect</span></li><li><span>Explain</span></li><li><span>Protect</span></li><li><span>Recover</span></li><li><span>Alert the team</span></li><li><span>Use data to fix</span></li></ul>
+  <div class="scroll"><table>
+    <thead><tr><th>Problem</th><th>Solution</th></tr></thead>
+    <tbody>
+    <tr><td>User doesn't know why payment failed</td><td>Contextual notification</td></tr>
+    <tr><td>User doesn't know whether to retry</td><td>Transaction-status check</td></tr>
+    <tr><td>Duplicate payment risk</td><td>Safe retry logic</td></tr>
+    <tr><td>Bank suddenly starts failing</td><td>Automated incident detection</td></tr>
+    <tr><td>Engineering doesn't know customer impact</td><td>Impact dashboard</td></tr>
+    <tr><td>Repeated failures happen</td><td>Historical failure analytics</td></tr>
+    <tr><td>Customer loses confidence</td><td>Transparent communication</td></tr>
+    <tr><td>External system can't be fixed immediately</td><td>Recovery experience</td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="engine">
+  <h2>The Payment Health &amp; Recovery Engine</h2>
+  <p>Three groups use the system, and the product connects all three.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>User</th><th>Question they need answered</th></tr></thead>
+    <tbody>
+    <tr><td>Customer</td><td>"What happened to my money?"</td></tr>
+    <tr><td>Support and operations</td><td>"How many customers are affected?"</td></tr>
+    <tr><td>Engineering</td><td>"Which system or bank is failing, and why?"</td></tr>
+    </tbody></table></div>
+  <h3>How it works</h3>
+  <ul class="flow"><li><span>Customer pays</span></li><li><span>Google Pay</span></li><li><span>Bank / NPCI</span></li><li><span>Status reaches the engine</span></li><li><span>Classify</span></li><li><span>Notify and monitor</span></li></ul>
+  <p>The engine classifies every transaction as a business decline, technical failure, pending, unknown, or successful, then shows the right message:</p>
+  <div class="cards">
+    <div class="card warn"><span class="s">Technical failure</span><b class="t">Your bank is currently experiencing a technical issue.</b>We couldn't confirm your payment. <b>Please don't make another payment yet. We're checking its status.</b></div>
+    <div class="card bad"><span class="s">Confirmed failure</span><b class="t">Payment couldn't be completed.</b>Your bank declined the transaction. <b>You can safely try again.</b></div>
+    <div class="card warn"><span class="s">Unknown status</span><b class="t">We're checking your payment.</b>We haven't received confirmation yet. <b>Please don't retry until we confirm the status.</b></div>
+    <div class="card ok"><span class="s">Success</span><b class="t">Payment successful</b>The transfer was completed.</div>
+  </div>
+</section>
+
+<section id="alerts">
+  <h2>Alerts and dashboard</h2>
+  <p>While the customer is notified, the system analyses the failure internally. Example (hypothetical): the normal technical failure rate for Bank X is 1.2%, and suddenly it becomes 8.7%. The system detects the anomaly and opens an incident.</p>
+  <div class="incident">
+    <h4>Payment incident detected</h4>
+    <dl>
+      <div><dt>Bank</dt><dd>Bank X</dd></div>
+      <div><dt>Failure type</dt><dd>Technical timeout</dd></div>
+      <div><dt>Current failure rate</dt><dd>8.7%</dd></div>
+      <div><dt>Baseline</dt><dd>1.2%</dd></div>
+      <div><dt>Affected transactions</dt><dd>14,382</dd></div>
+      <div><dt>Affected customers</dt><dd>11,900</dd></div>
+      <div><dt>Value affected</dt><dd>₹X</dd></div>
+      <div><dt>Started</dt><dd>10:42 PM</dd></div>
+      <div><dt>Status</dt><dd>Investigating</dd></div>
+    </dl>
+    <p>The right engineering or operations team is notified automatically.</p>
+  </div>
+  <h3>Customer impact dashboard</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Metric</th><th>Example</th></tr></thead>
+    <tbody>
+    <tr><td>Affected customers</td><td>11,900</td></tr>
+    <tr><td>Failed transactions</td><td>14,382</td></tr>
+    <tr><td>Pending transactions</td><td>3,100</td></tr>
+    <tr><td>Technical failure rate</td><td>8.7%</td></tr>
+    <tr><td>Normal baseline</td><td>1.2%</td></tr>
+    <tr><td>Transaction value affected</td><td>₹X</td></tr>
+    <tr><td>Incident duration</td><td>37 min</td></tr>
+    </tbody></table></div>
+  <p>This changes the team's question from "Is something broken?" to <strong>"How many customers are being affected, how severely, and where?"</strong></p>
+</section>
+
+<section id="recovery">
+  <h2>Recovery and the feedback loop</h2>
+  <p>The system keeps checking affected transactions until each one resolves.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Status found</th><th>System action</th><th>Message to customer</th></tr></thead>
+    <tbody>
+    <tr><td>Success</td><td>Notify user</td><td>Your payment was successful.</td></tr>
+    <tr><td>Failed</td><td>Enable safe retry</td><td>Your payment wasn't completed. You can safely try again.</td></tr>
+    <tr><td>Pending</td><td>Keep monitoring</td><td>Your payment is still being processed. We'll update you when we receive confirmation.</td></tr>
+    <tr><td>Debited, not completed</td><td>Track reversal</td><td>Your account was debited, but the payment wasn't completed. Your transaction is being processed for reversal. We'll notify you once the status is confirmed.</td></tr>
+    </tbody></table></div>
+  <h3>The feedback loop</h3>
+  <p>This is the most important part of the solution. The product becomes a self-improving reliability system.</p>
+  <ul class="flow"><li><span>Failure detected</span></li><li><span>Customer informed</span></li><li><span>Team alerted</span></li><li><span>Root cause found</span></li><li><span>Engineering fix</span></li><li><span>Failure rate falls</span></li><li><span>Better experience</span></li><li><span>More data, better detection</span></li></ul>
+</section>
+
+<section id="prd">
+  <h2>PRD and MVP</h2>
+  <h3>Product goal</h3>
+  <p>Reduce the customer impact of UPI payment failures by detecting failures early, communicating clearly, preventing duplicate payments, enabling safe recovery, alerting internal teams and providing actionable failure data.</p>
+  <h3>Target users</h3>
+  <p><strong>Primary:</strong> UPI customers. <strong>Secondary:</strong> customer support, payment operations, backend engineers, bank and PSP integration teams, and risk and fraud teams.</p>
+  <h3>MVP: five components</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Component</th><th>What it does</th></tr></thead>
+    <tbody>
+    <tr><td>Failure classification</td><td>Identify technical, business and pending or unknown failures.</td></tr>
+    <tr><td>Customer notification</td><td>Context-specific messages for each state.</td></tr>
+    <tr><td>Transaction status check</td><td>Determine whether an uncertain payment eventually succeeded.</td></tr>
+    <tr><td>Internal alerts</td><td>Detect abnormal failure spikes.</td></tr>
+    <tr><td>Basic incident dashboard</td><td>Affected users and transactions, bank, failure rate, failure type, transaction value, incident duration.</td></tr>
+    </tbody></table></div>
+  <div class="callout"><span class="k">Scope note</span><p>Deliberately not in the MVP: alternative payment routing, real-time bank health warnings shown to customers, and advanced preventive validation. They build on the same detection data and can follow once the core loop is proven.</p></div>
+</section>
+
+<section id="metrics">
+  <h2>Metrics and guardrails</h2>
+  <div class="callout"><span class="k">North Star metric</span><p><strong>First-attempt payment success rate</strong> = successful first-attempt transactions ÷ total payment attempts. It measures whether customers complete the intended payment without unnecessary retries.</p></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Supporting metric</th><th>Definition</th></tr></thead>
+    <tbody>
+    <tr><td>Overall transaction success rate</td><td>Successful transactions ÷ total attempts</td></tr>
+    <tr><td>Technical failure rate</td><td>Technical failures ÷ total attempts</td></tr>
+    <tr><td>Business decline rate</td><td>Business declines ÷ total attempts</td></tr>
+    <tr><td>Payment recovery rate</td><td>Share of failed or ambiguous transactions resolved through recovery mechanisms</td></tr>
+    <tr><td>Customer resolution time</td><td>Time from payment failure to clear resolution</td></tr>
+    <tr><td>Mean time to detect</td><td>How quickly the system identifies a payment incident</td></tr>
+    <tr><td>Mean time to resolve</td><td>How quickly the underlying incident is resolved</td></tr>
+    </tbody></table></div>
+  <h3>Guardrail metrics</h3>
+  <p>Improving payment success must not come at the expense of security. Monitor fraud rate and false-positive fraud blocks, duplicate payments, payment latency, support ticket volume, refund and reversal volume, and cost per successful transaction.</p>
+  <div class="callout bad"><p><strong>We should never increase payment success by weakening fraud or authentication controls.</strong></p></div>
+</section>
+
+<section id="experiment">
+  <h2>Experiment design</h2>
+  <div class="callout"><span class="k">Hypothesis</span><p>If we detect technical payment failures and clearly communicate the payment state while providing safe recovery, customers will experience less uncertainty, make fewer unnecessary retries and complete more payments successfully.</p></div>
+  <div class="scroll"><table>
+    <thead><tr><th></th><th>Control</th><th>Treatment</th></tr></thead>
+    <tbody>
+    <tr><td>Experience</td><td>"Payment Failed"</td><td>"We couldn't confirm your payment. Your bank isn't responding right now. We're checking your transaction status. Please don't make another payment yet."</td></tr>
+    <tr><td>Primary metric</td><td colspan="2">Payment recovery rate</td></tr>
+    <tr><td>Secondary metrics</td><td colspan="2">First-attempt success, repeat payment attempts, customer resolution time, support contacts</td></tr>
+    <tr><td>Guardrails</td><td colspan="2">Duplicate payments, fraud rate, payment latency</td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="roadmap">
+  <h2>Roadmap: 12 weeks</h2>
+  <ol class="road">
+    <li><b>Diagnose<i>Weeks 0–2</i></b><span>Analyse historical failures, define the failure taxonomy, establish baselines, identify highest-impact banks and error codes, build the failure funnel.</span></li>
+    <li><b>Detection<i>Weeks 3–5</i></b><span>Failure classification, anomaly detection, bank-level monitoring, failure-threshold alerts.</span></li>
+    <li><b>Customer experience<i>Weeks 5–8</i></b><span>Contextual error messages, pending state, transaction-status checking, customer notifications.</span></li>
+    <li><b>Internal operations<i>Weeks 8–10</i></b><span>Incident dashboard, affected-user tracking, bank-level failure monitoring, transaction-value monitoring.</span></li>
+    <li><b>Experiment and iterate<i>Weeks 10–12</i></b><span>A/B or controlled experiments: the existing failure experience against detection, notification and recovery.</span></li>
+  </ol>
+</section>
+
+<section id="outcome">
+  <h2>Outcome, trade-offs and vision</h2>
+  <h3>Expected outcome</h3>
+  <p>I would not invent a specific percentage improvement before seeing baseline data. First establish the baseline across failure volume, failure type, bank-level distribution, recovery rate, support volume, transaction value and resolution time. Then the target is:</p>
+  <div class="callout ok"><p>Increase first-attempt payment success and payment recovery while reducing customer resolution time and support contacts, without increasing fraud or duplicate payments.</p></div>
+  <h3>Key trade-offs</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Trade-off</th><th>Stance</th></tr></thead>
+    <tbody>
+    <tr><td>Fix vs recover</td><td>We can't immediately fix every bank-side failure, so recover the customer experience while engineering works on the underlying issue.</td></tr>
+    <tr><td>Retry vs duplicate payment</td><td>Never retry an uncertain transaction without checking its status.</td></tr>
+    <tr><td>Success vs security</td><td>Don't loosen authentication or fraud controls to raise success. Reliability operates within security guardrails.</td></tr>
+    <tr><td>Notification vs fatigue</td><td>Notify only when the information is actionable.</td></tr>
+    </tbody></table></div>
+  <h3>Vision</h3>
+  <div class="callout"><p><strong>Build a payment system where customers always know what is happening to their money, and internal teams always know when customers are being affected.</strong></p></div>
+  <p>The chain runs from customer to fix: the customer asks "what happened to my payment?", the product answers with what to do, the system shows how many customers are affected, engineering sees which bank is failing, the fix ships, and the customer hears their payment is resolved.</p>
+  <p><strong>The PM takeaway.</strong> A PM doesn't always need to solve the underlying technical problem immediately. The PM needs to understand what is controllable, where the highest leverage exists, and how to protect the customer while the deeper problem is being solved.</p>
+  <ul class="flow"><li><span>Prevent</span></li><li><span>Detect</span></li><li><span>Inform</span></li><li><span>Protect</span></li><li><span>Recover</span></li><li><span>Alert</span></li><li><span>Learn</span></li></ul>
+  <div class="callout"><span class="k">The final principle</span><p><strong>Don't just build a system that processes payments. Build a system that takes responsibility when payments go wrong.</strong></p></div>
+</section>
+
+<section id="qa">
+  <h2>Interview Q&amp;A</h2>
+  <p>Likely follow-up questions, with short answers drawn from the reasoning above.</p>
+  <details><summary>Why not just reduce the failure rate directly?</summary><div><p>Many failures come from banks, NPCI and networks outside Google Pay's control. I'd invest in what we control (detection, communication, safe retry, recovery, alerting) and feed failure data to bank and PSP integration teams so root causes get fixed in parallel.</p></div></details>
+  <details><summary>What is the single most important design decision?</summary><div><p>Never retry an unknown transaction without checking its status. It's the line between helping the user and creating duplicate payments.</p></div></details>
+  <details><summary>How do you know it worked?</summary><div><p>North Star is first-attempt payment success. The experiment's primary metric is payment recovery rate, with secondary metrics for repeat attempts, resolution time and support contacts. Guardrails: duplicate payments, fraud rate and latency.</p></div></details>
+  <details><summary>What would you cut for an MVP?</summary><div><p>Five pieces only: classification, contextual notification, status check, spike alerts, and a basic incident dashboard. Alternative routing and early bank health warnings come later.</p></div></details>
+  <details><summary>What if recovery rate rises but duplicate payments also rise?</summary><div><p>That's a guardrail breach. I'd pause the rollout, tighten the retry gate so only confirmed failures can be retried, and review the status-check logic before expanding.</p></div></details>
+  <details><summary>What's the biggest risk?</summary><div><p>Misclassifying a failure, for example telling a user it's safe to retry when the original payment actually succeeded. Mitigation: enable retry only after a confirmed-failure status, and lean toward the cautious "checking your payment" message.</p></div></details>
+  <details><summary>What target would you set?</summary><div><p>I wouldn't state a number before baselining failure volume, bank-level distribution, recovery rate and support volume. I'd set the target after the first two weeks of diagnosis.</p></div></details>
+  <details><summary>How do you avoid notification fatigue?</summary><div><p>Notify only when the message is actionable, such as a state change or a retry decision, not for every internal status check.</p></div></details>
+  <details><summary>Who are your stakeholders?</summary><div><p>Customers, support, payment operations, backend engineers, bank and PSP integration teams, and risk and fraud teams.</p></div></details>
+</section>
+
+<section id="sources" class="src">
+  <h2>Sources</h2>
+  <ul>
+    <li><a href="https://www.npci.org.in/product/upi/product-statistics" target="_blank" rel="noopener">NPCI: UPI product statistics</a></li>
+    <li><a href="https://www.npci.org.in/what-we-do/upi/upi-ecosystem-statistics" target="_blank" rel="noopener">NPCI: UPI ecosystem statistics</a></li>
+    <li><a href="https://www.npci.org.in/what-we-do/upi/faqs" target="_blank" rel="noopener">NPCI: UPI FAQs</a></li>
+  </ul>
+  <div class="callout warn"><span class="k">Data note</span><p>The UPI volume figures (24.51 billion transactions and about ₹29.82 lakh crore in August 2026) are published NPCI figures. All failure distributions, dashboards, incident numbers and improvement targets used as examples are hypothetical illustrations, not claims about Google's internal data.</p></div>
+</section>
+
+<footer>Case study 01: Payment Health &amp; Recovery Engine. Product management portfolio.</footer>
+</main>
+</div>
+</div>
+
+<script>
+(function(){
+  var states = [
+    {id:"tech", label:"Bank not responding", before:"Payment Failed", beforeNote:"The user can't tell whether money moved, and may retry.",
+     tone:"warn", title:"We couldn't confirm your payment", p1:"Your bank isn't responding right now.", p2:"Please don't make another payment yet. We're checking the status of your transaction.",
+     state:"Technical issue, status unconfirmed", retry:"No. Blocked until status is confirmed", action:"Checks status, monitors, alerts the team if failures spike"},
+    {id:"unknown", label:"Status unknown", before:"Payment Failed", beforeNote:"Looks final, but the payment may have gone through.",
+     tone:"warn", title:"We're checking your payment", p1:"We haven't received confirmation yet.", p2:"Please don't retry until we confirm the status.",
+     state:"Unknown", retry:"No. Check status first", action:"Polls the bank until the payment resolves to success, failed or pending"},
+    {id:"failed", label:"Bank declined it", before:"Payment Failed", beforeNote:"Accurate, but gives no guidance on what to do.",
+     tone:"bad", title:"Payment couldn't be completed", p1:"Your bank declined the transaction.", p2:"You can safely try again.",
+     state:"Confirmed failure", retry:"Yes. Safe to retry", action:"Explains the reason and offers retry"},
+    {id:"pending", label:"Still processing", before:"Payment Failed", beforeNote:"Wrong: the payment hasn't failed yet.",
+     tone:"warn", title:"Your payment is still being processed", p1:"We'll update you when we receive confirmation.", p2:"No action needed right now.",
+     state:"Pending", retry:"No. Wait for the update", action:"Keeps monitoring and notifies on resolution"},
+    {id:"debited", label:"Debited, not completed", before:"Payment Failed", beforeNote:"The most worrying case: the customer sees money leave the account.",
+     tone:"warn", title:"Your account was debited, but the payment wasn't completed", p1:"Your transaction is being processed for reversal.", p2:"We'll notify you once the status is confirmed.",
+     state:"Debited, not completed", retry:"No. Wait for the reversal", action:"Tracks the reversal and tells the customer where their money is"},
+    {id:"ok", label:"Went through", before:"Payment successful", beforeNote:"Success needs no change.",
+     tone:"ok", title:"Payment successful", p1:"The transfer was completed.", p2:"",
+     state:"Success", retry:"Not needed", action:"Confirms to the customer"}
+  ];
+  var tabs = document.getElementById("tabs"), idx = 0, buttons = [];
+  var $ = function(i){return document.getElementById(i)};
+  function render(i, focus){
+    idx = i; var s = states[i];
+    buttons.forEach(function(b, j){ b.setAttribute("aria-selected", j===i ? "true":"false"); b.tabIndex = j===i ? 0 : -1; });
+    if(focus) buttons[i].focus();
+    $("beforeMsg").textContent = s.before; $("beforeNote").textContent = s.beforeNote;
+    $("afterMsg").textContent = s.title; $("afterP1").textContent = s.p1;
+    var p2 = $("afterP2"); p2.firstChild.textContent = s.p2; p2.style.display = s.p2 ? "" : "none";
+    $("afterPane").className = "pane after " + s.tone;
+    $("fState").textContent = s.state; $("fRetry").textContent = s.retry; $("fAction").textContent = s.action;
+  }
+  states.forEach(function(s, i){
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role","tab"); b.textContent = s.label; b.id = "tab-" + s.id;
+    b.setAttribute("aria-controls","panel");
+    b.addEventListener("click", function(){ render(i); });
+    b.addEventListener("keydown", function(e){
+      if(e.key==="ArrowRight"||e.key==="ArrowDown"){ e.preventDefault(); render((idx+1)%states.length, true); }
+      if(e.key==="ArrowLeft"||e.key==="ArrowUp"){ e.preventDefault(); render((idx-1+states.length)%states.length, true); }
+    });
+    tabs.appendChild(b); buttons.push(b);
+  });
+  render(0);
+
+  // highlight current section in nav
+  var links = Array.prototype.slice.call(document.querySelectorAll("#toclist a"));
+  var map = {}; links.forEach(function(a){ map[a.getAttribute("href").slice(1)] = a; });
+  function setCurrent(id){
+    links.forEach(function(a){ a.removeAttribute("aria-current"); });
+    if(map[id]) map[id].setAttribute("aria-current","true");
+  }
+  setCurrent("top");
+  if("IntersectionObserver" in window){
+    var secs = Array.prototype.slice.call(document.querySelectorAll("section[id]"));
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ if(e.isIntersecting) setCurrent(e.target.id); });
+    }, {rootMargin:"-20% 0px -70% 0px"});
+    secs.forEach(function(s){ io.observe(s); });
+    window.addEventListener("scroll", function(){ if(window.scrollY < 200) setCurrent("top"); }, {passive:true});
+  }
+})();
+</script>
+</body>
+</html>
