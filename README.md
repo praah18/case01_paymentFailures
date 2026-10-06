@@ -3,8 +3,7 @@
 ### Product Management Case Study
 
 🔗 **Live Case Study:**  
-https://silver-capybara-699rqrw4qxpp3rgxw-8000.app.github.dev/
-
+https://praah18.github.io/case01_paymentFailures/
 ---
 
 ## 📌 Overview
